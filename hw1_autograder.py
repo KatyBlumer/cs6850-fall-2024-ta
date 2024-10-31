@@ -214,25 +214,7 @@ def find_zscore_and_outliers(Y, idx2student, num_std=1):
     return Z, outliers, outliers_ids, outliers_netids
 
 
-def grade_ex_1(X, idx2student):
-    # Total number of edges test (sum degree of all nodes)
-    num_edges = X.sum(-1)
-
-    Z_edge, edge_outliers, edge_outlier_ids, edge_outlier_netids = find_zscore_and_outliers(num_edges, idx2student)
-    Z_edge_abs = np.abs(Z_edge)
-
-
-    scores = score_zscores(Z_edge_abs)
-
-    plt.figure()
-    plt.title('Q1: Z-score total number of edges')
-    counts, bins = np.histogram(Z_edge)
-    plt.hist(bins[:-1], bins, weights=counts)
-
-    plt.savefig('q1_total_num_edges.png')
-
-    print(f"Q1: {len(edge_outlier_netids)} Outliers in total nums edges:\n{edge_outlier_netids}")
-
+def score_wasserstein(X, qnum, label="class's mean"):
     # Wasserstein distance (EMD) of distributions of node degree counts
     #   (EMD=Earth Mover Distance, another name for Wasserstein)
     X_emp = X.mean(0)
@@ -242,19 +224,52 @@ def grade_ex_1(X, idx2student):
     for subm_i in range(X.shape[0]):
         dist[subm_i] = wasserstein_distance(X[subm_i, :], X_emp)
 
-    Z_emd, emd_outliers, emd_outlier_ids, emd_outlier_netids = find_zscore_and_outliers(dist, idx2student)
-    Z_emd_abs = np.abs(Z_emd)
 
-    scores = scores + score_zscores(Z_emd_abs)
+    Z_emd_signed, emd_outliers, emd_outlier_ids, emd_outlier_netids = find_zscore_and_outliers(dist, idx2student)
+    # In this case, do *not* take the absolute value, since we're working with distances - someone
+    # with a negative zscore is *closer* to the average answer distribution than most people in the class,
+    # and should not be penalized.
+    # (In practice, no one is ever a full standard deviation *below* the mean distance, 
+    #   and since no one loses points if they're within a standard deviation of the mean,
+    #   it likely won't matter if we use signed or unsigned Z-scores. But we could 
+    #   someday change how we do scoring or something, so worth being careful.)
+    scores = score_zscores(Z_emd_signed, warn_if_not_abs=False)
 
     plt.figure()
-    plt.title('Q1: Z-score of Wasserstein distances to mean degree distribiution')
-    counts, bins = np.histogram(Z_emd)
+    plt.title(f"Q{qnum}: Distribution of Wasserstein distances (EMDs) from the class's mean answer")
+    sns.histplot(dist)
+    plt.savefig(f'q{qnum}_emd_distribution.png')
+
+    plt.figure()
+    plt.title(f'Q{qnum}: Z-score (signed) of Wasserstein distances (EMDs) to {label}')
+    sns.histplot(Z_emd_signed)
+    plt.savefig(f'q{qnum}_emd_zscores.png')
+
+    print(f"Q{qnum}: {len(emd_outlier_netids)} Outliers in EMD:\n{emd_outlier_netids}")
+
+    return scores
+
+def grade_ex_1(X, idx2student):
+
+    # Total number of edges test (sum degree of all nodes)
+    num_edges = X.sum(-1)
+
+    Z_edge_signed, edge_outliers, edge_outlier_ids, edge_outlier_netids = find_zscore_and_outliers(num_edges, idx2student)
+    Z_edge_abs = np.abs(Z_edge_signed)
+
+
+    scores = score_zscores(Z_edge_abs)
+
+    plt.figure()
+    plt.title('Q1: Z-score total number of edges')
+    counts, bins = np.histogram(Z_edge_signed)
     plt.hist(bins[:-1], bins, weights=counts)
 
-    plt.savefig('q1_emd_degree_dist.png')
+    plt.savefig('q1_total_num_edges.png')
 
-    print(f"Q1: {len(emd_outlier_netids)} Outliers in EMD:\n{emd_outlier_netids}")
+    print(f"Q1: {len(edge_outlier_netids)} Outliers in total nums edges:\n{edge_outlier_netids}")
+
+    scores += score_wasserstein(X, qnum=1, label='mean degree distribution')
 
     scores /= 2
 
@@ -265,7 +280,8 @@ def grade_ex_1(X, idx2student):
 
 
 def grade_ex_2(X, idx2student):
-    # Number of lcc test
+    # scores = np.zeros(X.shape[0])
+    # Number of lcc testsdfg 
     lcc = X[:, 0]
 
     Z_lcc, lcc_outliers, lcc_outlier_ids, lcc_outlier_netids = find_zscore_and_outliers(lcc, idx2student)
@@ -281,35 +297,7 @@ def grade_ex_2(X, idx2student):
 
     print(f"Q2, {len(lcc_outlier_netids)} Outliers in largest connected component:\n\t{lcc_outlier_netids}")
 
-    # Wasserstein distance (EMD) of distributions of connected component sizes
-    #   (EMD=Earth Mover Distance, another name for Wasserstein)
-    X = X[:, 1:]
-    X_emp = X.mean(0)
-
-    dist = np.zeros(X.shape[0], dtype=np.float64)
-
-    for subm_idx in range(X.shape[0]):
-        dist[subm_idx] = wasserstein_distance(X[subm_idx, :], X_emp)
-
-    print_nice_arr(X_emp)
-    print_nice_arr(dist)
-
-    Z_emd, emd_outliers, emd_outlier_ids, emd_outlier_netids = find_zscore_and_outliers(dist, idx2student)
-    Z_emd_abs = np.abs(Z_emd)
-
-    print_nice_arr(Z_emd)
-    print(dist.shape)
-
-    scores = scores + score_zscores(Z_emd_abs)
-
-    plt.figure()
-    plt.title('Q2: Z-score of Wasserstein distance of connected component sizes')
-    counts, bins = np.histogram(Z_emd)
-    plt.hist(bins[:-1], bins, weights=counts)
-    plt.savefig('q2_emd_cc.png')
-
-    print(f"Q2, {len(emd_outlier_netids)} Outliers in Wasserstein distance (Distribution of connected components):\n\t{emd_outlier_netids}")
-    print('')
+    scores += score_wasserstein(X, qnum=2, label='connected component sizes')
 
     scores /= 2
 
@@ -325,8 +313,13 @@ def grade_submissions(student2idx, idx2student, answers, aggregate_answers, erro
 
     grades = scores.sum(-1)
 
+    # print_nice_arr(scores)
+    # print_nice_arr(grades)
+
+    print()
     print('Fraction of students with lost points', (grades < 12).sum() / len(grades))
     print(f'Fraction of students with lost points, per question: {(scores < 3).sum(0) / scores.shape[0]}')
+
 
     grades_df = []
 
