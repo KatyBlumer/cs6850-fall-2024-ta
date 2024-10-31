@@ -8,6 +8,7 @@ from scipy.stats import chi2
 from scipy.stats import wasserstein_distance
 import pandas as pd
 import matplotlib.pyplot as plt
+import seaborn as sns
 
 submission_dir = "submissions" #@param
 grade_output_file = "grades_HW1.csv" #@param
